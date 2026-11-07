@@ -1181,7 +1181,8 @@ async function ghRaw(path,opt={}){
   if(r.ok||r.status===304)return r;
   let why='';try{why=(await r.json()).message||''}catch(e){}
   const limited=r.status===429||r.headers.get('x-ratelimit-remaining')==='0'||/rate limit/i.test(why);
-  const err=new Error(limited?'GitHub 暂时限流，稍后会自动恢复'
+  if(limited){const reset=+r.headers.get('x-ratelimit-reset')*1000,after=+r.headers.get('retry-after')*1000;rlUntil=reset>Date.now()?reset:Date.now()+(after||60000)}
+  const err=new Error(limited?'GitHub 暂时限流，'+new Date(rlUntil).toTimeString().slice(0,5)+' 左右自动恢复，修改会先保存在本机'
     :r.status===401?'Token 无效或已过期，请重新填写'
     :r.status===404?'找不到同步数据'
     :r.status===403?'没有权限（GitHub：'+(why||'Forbidden')+'）。请确认 Token 的 Gists 权限为 Read and write'
@@ -1189,9 +1190,10 @@ async function ghRaw(path,opt={}){
   err.status=r.status;err.limited=limited;throw err;
 }
 const gh=async(path,opt)=>(await ghRaw(path,opt)).json();
-let remoteCache=null; // 上次从 GitHub 拿到的内容，配合 ETag：内容没变时 GitHub 返回 304，不消耗请求额度
-async function syncNow(){
+let rlUntil=0,remoteCache=null; // 上次从 GitHub 拿到的内容，配合 ETag：内容没变时 GitHub 返回 304，不消耗请求额度
+async function syncNow(force){
   if(!SC.token)return;
+  if(!force&&Date.now()<rlUntil)return;
   if(syncing){syncAgain=true;return}
   syncing=true;if(syncState.s!=='ok')setSync('busy');
   try{
@@ -1245,7 +1247,7 @@ function toggleSyncPop(){
       try{$('#syncMsg').className='msg';$('#syncMsg').textContent='正在查找已有的同步数据…';SC.gist=await findGist()}catch(e){SC.token='';$('#syncMsg').className='msg err';$('#syncMsg').textContent=e instanceof TypeError?'网络连接失败':e.message;return}
       saveSC();p.remove();toggleSyncPop();
     }
-    await syncNow();render();
+    await syncNow(true);render();
   };
   const off=$('#syncOff');if(off)off.onclick=()=>{SC={token:'',gist:'',last:0};saveSC();setSync('off');p.remove()};
   setTimeout(()=>{const i=$('#syncToken');if(i)i.focus()},30);
@@ -1261,9 +1263,9 @@ document.addEventListener('visibilitychange',pullSoon);
 addEventListener('focus',pullSoon);
 addEventListener('pageshow',e=>{if(e.persisted)pullSoon()});
 addEventListener('online',()=>syncNow());
-// 页面开着时每 5 秒拉一次；出错时放慢到 30 秒一次，避免触发 GitHub 的频率限制
+// 页面开着时每 20 秒拉一次；出错时放慢到 60 秒一次
 let lastTick=0;
-setInterval(()=>{if(document.visibilityState!=='visible')return;if(syncState.s==='err'&&Date.now()-lastTick<30000)return;lastTick=Date.now();syncNow()},5000);
+setInterval(()=>{if(document.visibilityState!=='visible')return;if(syncState.s==='err'&&Date.now()-lastTick<60000)return;lastTick=Date.now();syncNow()},20000);
 
 /* ---------- Mac 客户端桥接 ---------- */
 let nsT=null;
