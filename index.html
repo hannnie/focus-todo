@@ -321,6 +321,9 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
 @media (max-width:420px){.dock .tab{padding:0 12px}.dock .tab .count{display:none}}
 /* iOS 主屏模式下状态栏取页面最顶层的背景色，html 也要有底色，否则会出现灰条 */
 :root:not(.mac){background:var(--bg)}
+/* Safari 26 会取页面顶部的固定元素来给状态栏上色：放一条与页面同色的细条，确保取到的是页面底色 */
+.topcolor{position:fixed;top:0;left:0;right:0;height:max(1px,env(safe-area-inset-top,0px));background:var(--bg);z-index:40;pointer-events:none}
+.mac .topcolor{display:none}
 .mac .app{padding-top:48px}
 .mac .themebtn{top:61px}
 .mac body{background:color-mix(in srgb,var(--bg) 88%,transparent)}
@@ -382,6 +385,7 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
   <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3.2 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/></symbol>
 </svg>
 
+<div class="topcolor" aria-hidden="true"></div>
 <div class="app">
 
   <div class="head">
