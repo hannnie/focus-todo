@@ -321,6 +321,10 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
 .dock-add:active{transform:scale(.96)}
 .dock-add svg{width:18px;height:18px;position:relative;z-index:1}
 @media (max-width:420px){.dock .tab{padding:0 12px}.dock .tab .count{display:none}}
+.mac .app{padding-top:48px}
+.mac .themebtn{top:61px}
+.mac body{background:color-mix(in srgb,var(--bg) 88%,transparent)}
+.mac .add,.mac .row.open{-webkit-user-select:text}
 .themebtn{position:absolute;z-index:22;top:calc(33px + env(safe-area-inset-top,0px));right:calc(18px + env(safe-area-inset-right,0px));width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--muted);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);transition:color .15s,transform .2s}
 .themebtn:hover{color:var(--fg)}
 .syncbtn{right:calc(60px + env(safe-area-inset-right,0px))}
@@ -413,6 +417,10 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
 
 <script>
 const KEY='focus-todo-v1';
+// Mac 客户端：页面运行在原生 App 的 WKWebView 里时，提醒、天气、Dock 角标交给系统处理
+const NATIVE=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.native);
+const post=m=>{if(!NATIVE)return;try{window.webkit.messageHandlers.native.postMessage(m)}catch(e){}};
+if(NATIVE)document.documentElement.classList.add('mac');
 const VIEWS=[
   {id:'today',name:'今天',icon:'i-today',sub:'从今天开始做任何事都不算晚'},
   {id:'week', name:'本周',icon:'i-week', sub:'提前一周安排好生活档期'},
@@ -627,7 +635,7 @@ function renderList(){
   $('#list').innerHTML=h;
   if(openId){const c=document.querySelector('.row.open');if(c){c.querySelectorAll('textarea').forEach(autoH)}}
 }
-function render(){renderTabs();renderHead();renderList()}
+function render(){renderTabs();renderHead();renderList();if(NATIVE)nativeSync()}
 
 /* ---------- card open / close ---------- */
 const cur=()=>S.items.find(i=>i.id===openId);
@@ -896,6 +904,7 @@ function toast(text,action,cls=''){
   if(!cls)setTimeout(()=>el.remove(),4000);
 }
 function checkReminders(){
+  if(NATIVE)return; // Mac 客户端由系统通知中心负责提醒
   const now=new Date();let changed=false;
   for(const it of S.items){
     if(it.done||!it.remind||it.reminded)continue;
@@ -915,7 +924,14 @@ function checkReminders(){
 // 需要在和风天气控制台创建项目，拿到 API Host（每个账号独立）和 API KEY
 let wxState={status:'idle',msg:''};
 function wxIcon(t=''){if(/雪/.test(t))return 'i-snow';if(/雨/.test(t))return 'i-rain';if(/晴/.test(t))return 'i-sun';return 'i-cloud'}
+// Mac 客户端的天气：系统定位 + Open-Meteo，由原生层获取后推送过来
+let NW=null;
+const WMO=c=>c===0?'晴':c<=2?'多云':c===3?'阴':c<=48?'雾':c<=57?'毛毛雨':c<=61?'小雨':c<=63?'中雨':c<=67?'大雨':c<=77?'雪':c<=82?'阵雨':c<=86?'阵雪':'雷雨';
 function wxHTML(){
+  if(NATIVE){
+    if(NW&&NW.temp!=null){const t=WMO(NW.code);return `<button class="wx" id="wxBtn" title="${esc(NW.city||'当前位置')} · 点击刷新"><svg><use href="#${wxIcon(t)}"/></svg>${Math.round(NW.temp)}° ${t}</button>`}
+    return `<button class="wx off" id="wxBtn" title="${esc((NW&&NW.error)||'正在获取天气')}"><svg><use href="#i-cloud"/></svg>${NW&&NW.error?'开启定位查看天气':'--°'}</button>`;
+  }
   const c=S.wxCache,cfg=S.wx||{};
   if(!cfg.key||!cfg.host||!cfg.city)return `<button class="wx off" id="wxBtn"><svg><use href="#i-cloud"/></svg>设置天气</button>`;
   if(c&&c.city===cfg.city)return `<button class="wx" id="wxBtn" title="${esc(c.name)} · 更新于 ${new Date(c.at).toTimeString().slice(0,5)}"><svg><use href="#${wxIcon(c.text)}"/></svg>${esc(c.temp)}° ${esc(c.text)}</button>`;
@@ -929,6 +945,7 @@ async function qw(path){
   return j;
 }
 async function loadWeather(force=false){
+  if(NATIVE)return;
   const cfg=S.wx||{};if(!cfg.key||!cfg.host||!cfg.city)return;
   const c=S.wxCache;
   if(!force&&c&&c.city===cfg.city&&Date.now()-c.at<30*6e4)return;
@@ -966,7 +983,7 @@ function toggleWxPop(){
   };
   setTimeout(()=>$('#wxCity').focus(),30);
 }
-$('#hDate').addEventListener('click',e=>{if(e.target.closest('#wxBtn'))toggleWxPop()});
+$('#hDate').addEventListener('click',e=>{if(e.target.closest('#wxBtn')){if(NATIVE)post({type:'weather'});else toggleWxPop()}});
 document.addEventListener('mousedown',e=>{const p=$('#wxPop');if(p&&!e.target.closest('#wxPop')&&!e.target.closest('#wxBtn'))p.remove()});
 
 /* ---------- events ---------- */
@@ -1224,8 +1241,31 @@ addEventListener('online',()=>syncNow());
 let lastTick=0;
 setInterval(()=>{if(document.visibilityState!=='visible')return;if(syncState.s==='err'&&Date.now()-lastTick<30000)return;lastTick=Date.now();syncNow()},5000);
 
+/* ---------- Mac 客户端桥接 ---------- */
+let nsT=null;
+// 把未来的提醒和今天的待办数交给原生层：系统通知 + Dock 角标
+function nativeSync(){clearTimeout(nsT);nsT=setTimeout(()=>{
+  const now=Date.now();
+  post({type:'reminders',items:S.items.filter(i=>!i.done&&i.remind&&new Date(i.remind).getTime()>now).map(i=>({id:i.id,title:i.title,at:new Date(i.remind).getTime(),body:i.notes?firstNote(i.notes):'到时间了'}))});
+  post({type:'badge',count:openCount('today')});
+},250)}
+window.focusNative=m=>{
+  const it=m.id?S.items.find(i=>i.id===m.id):null;
+  switch(m.type){
+    case 'complete':if(it&&!it.done){it.done=true;it.doneAt=Date.now();it.subs.forEach(x=>x.done=true);save();render()}break;
+    case 'snooze':if(it){it.remind=localDT(new Date(Date.now()+(m.minutes||10)*6e4));it.reminded=false;save();render()}break;
+    case 'open':if(it){if(S.view!==it.list)setView(it.list);openCard(it.id)}break;
+    case 'new':closeCard();window.scrollTo({top:0,behavior:'smooth'});$('#addInput').focus({preventScroll:true});break;
+    case 'view':setView(m.view);break;
+    case 'theme':setTheme(isDark()?'light':'dark');break;
+    case 'sync':syncNow();break;
+    case 'weather':NW=m;if(S.view==='today')renderHead();break;
+    case 'notifyAuth':if(!m.ok)toast('系统通知未开启，可在「系统设置 → 通知 → Focus Todo」里打开');break;
+  }
+};
+
 /* ---------- boot ---------- */
-load();resetSnap();rollover();syncDates();render();setSync(SC.token?'idle':'off');syncNow();checkReminders();loadWeather();
+load();resetSnap();rollover();syncDates();render();setSync(SC.token?'idle':'off');syncNow();checkReminders();loadWeather();post({type:'ready'});
 let lastDay=todayStr();
 setInterval(()=>{if(todayStr()!==lastDay){lastDay=todayStr();rollover();syncDates();if(!openId)render()}checkReminders();loadWeather()},20000);
 </script>
