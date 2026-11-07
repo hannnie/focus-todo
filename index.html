@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>照常</title>
 <meta name="description" content="照常 Loopling：今天、本周、计划，专注今日最重要的事">
-<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="照常">
@@ -1131,7 +1130,9 @@ addEventListener('mousemove',e=>{if(e.clientY>innerHeight-120&&dock.classList.co
 // 深色 / 浅色切换：默认跟随系统，手动切换后记住
 const themeMQ=matchMedia('(prefers-color-scheme: dark)');
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':themeMQ.matches};
-function syncThemeBtn(){const d=isDark();$('#themeBtn').innerHTML=`<svg><use href="#${d?'i-sun':'i-moon'}"/></svg>`;$('#themeBtn').setAttribute('aria-label',d?'切换到浅色模式':'切换到深色模式');$('#themeBtn').title=d?'浅色模式':'深色模式'}
+// 状态栏颜色跟随页面当前的深浅色（iOS 主屏打开时顶部那一条）
+function syncThemeColor(){const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',isDark()?'#0f1115':'#f6f7f9')}
+function syncThemeBtn(){syncThemeColor();const d=isDark();$('#themeBtn').innerHTML=`<svg><use href="#${d?'i-sun':'i-moon'}"/></svg>`;$('#themeBtn').setAttribute('aria-label',d?'切换到浅色模式':'切换到深色模式');$('#themeBtn').title=d?'浅色模式':'深色模式'}
 function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('focus-todo-theme',t)}catch(e){}syncThemeBtn()}
 $('#syncBtn').addEventListener('click',toggleSyncPop);
 $('#themeBtn').addEventListener('click',()=>setTheme(isDark()?'light':'dark'));
