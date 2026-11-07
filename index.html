@@ -1117,7 +1117,7 @@ document.addEventListener('pointerup',()=>{
   const own=it.pri??null,a=above?above.pri??null:undefined,b=below?below.pri??null:undefined;
   if(own!==a&&own!==b){
     const np=above?a:b;
-    if(np!==undefined&&np!==own){it.pri=np;toast(np==null?'已移除优先级':`优先级已改为 P${np}`)}
+    if(np!==undefined&&np!==own)it.pri=np;
   }
   ids.forEach((id,i)=>{byId[id].order=i});
   save();render();
