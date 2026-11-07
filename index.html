@@ -532,6 +532,8 @@ function renderHead(){
   const vis=visible(S.view),dn=vis.filter(i=>i.done).length,tot=vis.length;
   $('#progFill').style.width=(tot?dn/tot*100:0)+'%';
   $('#progText').textContent=tot?`${dn}/${tot}`:'';
+  // 没有待办时隐藏右侧数字，进度条两端与内容等宽对齐
+  $('#progText').hidden=!tot;
   $('#progText').style.color=tot&&dn===tot?`var(--c-${S.view})`:'';
   $('#progFill').style.background=`var(--c-${S.view})`;
   $('#prog').classList.toggle('has',dn>0);
