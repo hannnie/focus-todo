@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e8546b">
+<link rel="manifest" href="/status-test/m8.webmanifest">
+<title>测8</title>
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<style>html,body{background:#f6f7f9;margin:0;color:#1b1e26;font:17px/1.6 -apple-system,"PingFang SC",sans-serif}
+main{padding:24px 20px}h1{font-size:44px;margin:0 0 8px}p{margin:6px 0;color:#6a7080}code{font:13px ui-monospace,monospace;color:#1b1e26}</style></head>
+<body><main><h1>测8</h1><p>诊断：theme-color 设成红色</p><p><code id="info"></code></p></main>
+<script>const d=document.createElement('div');d.style.cssText='position:fixed;top:env(safe-area-inset-top);';document.body.appendChild(d);
+document.getElementById('info').textContent='主屏模式：'+(navigator.standalone||matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches?'是':'否')+' · 顶部安全区：'+getComputedStyle(d).top+' · '+['fullscreen','standalone','minimal-ui','browser'].find(m=>matchMedia('(display-mode: '+m+')').matches);</script>
+</body></html>
