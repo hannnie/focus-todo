@@ -462,6 +462,7 @@ function fmtRemind(s){const d=new Date(s);return `${pad(d.getHours())}:${pad(d.g
 
 /* ---------- storage ---------- */
 function load(){try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r));else seed()}catch(e){seed()}
+  if(S.wx&&S.wx.key!==undefined&&S.wx.lat==null){delete S.wx;delete S.wxCache}
   S.items.forEach(i=>{if(i.date===undefined)i.date=null;if(i.pri===undefined)i.pri=null;if(!Array.isArray(i.subs))i.subs=[]})}
 function save(){if(typeof stamp==='function')stamp();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(typeof schedulePush==='function')schedulePush()}
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
@@ -922,68 +923,68 @@ function checkReminders(){
   if(changed){save();if(!openId)renderList()}
 }
 
-/* ---------- weather · 和风天气 QWeather ---------- */
-// 需要在和风天气控制台创建项目，拿到 API Host（每个账号独立）和 API KEY
+/* ---------- 天气：Open-Meteo（免费、无需 Key） ----------
+   网页版：浏览器定位，或手动输入城市；Mac 客户端：系统定位，由原生层推送 */
 let wxState={status:'idle',msg:''};
 function wxIcon(t=''){if(/雪/.test(t))return 'i-snow';if(/雨/.test(t))return 'i-rain';if(/晴/.test(t))return 'i-sun';return 'i-cloud'}
-// Mac 客户端的天气：系统定位 + Open-Meteo，由原生层获取后推送过来
 let NW=null;
 const WMO=c=>c===0?'晴':c<=2?'多云':c===3?'阴':c<=48?'雾':c<=57?'毛毛雨':c<=61?'小雨':c<=63?'中雨':c<=67?'大雨':c<=77?'雪':c<=82?'阵雨':c<=86?'阵雪':'雷雨';
 function wxHTML(){
-  if(NATIVE){
-    if(NW&&NW.temp!=null){const t=WMO(NW.code);return `<button class="wx" id="wxBtn" title="${esc(NW.city||'当前位置')} · 点击刷新"><svg><use href="#${wxIcon(t)}"/></svg>${Math.round(NW.temp)}° ${t}</button>`}
-    return `<button class="wx off" id="wxBtn" title="${esc((NW&&NW.error)||'正在获取天气')}"><svg><use href="#i-cloud"/></svg>${NW&&NW.error?'开启定位查看天气':'--°'}</button>`;
-  }
-  const c=S.wxCache,cfg=S.wx||{};
-  if(!cfg.key||!cfg.host||!cfg.city)return `<button class="wx off" id="wxBtn"><svg><use href="#i-cloud"/></svg>设置天气</button>`;
-  if(c&&c.city===cfg.city)return `<button class="wx" id="wxBtn" title="${esc(c.name)} · 更新于 ${new Date(c.at).toTimeString().slice(0,5)}"><svg><use href="#${wxIcon(c.text)}"/></svg>${esc(c.temp)}° ${esc(c.text)}</button>`;
+  const w=NATIVE?NW:S.wxCache;
+  if(w&&w.temp!=null){const t=WMO(w.code);return `<button class="wx" id="wxBtn" title="${esc(w.city||'当前位置')}${NATIVE?' · 点击刷新':' · 点击修改'}"><svg><use href="#${wxIcon(t)}"/></svg>${Math.round(w.temp)}° ${t}</button>`}
+  if(NATIVE)return `<button class="wx off" id="wxBtn" title="${esc((NW&&NW.error)||'正在获取天气')}"><svg><use href="#i-cloud"/></svg>${NW&&NW.error?'开启定位查看天气':'--°'}</button>`;
+  if(!S.wx||S.wx.lat==null)return `<button class="wx off" id="wxBtn"><svg><use href="#i-cloud"/></svg>设置天气</button>`;
   return `<button class="wx off" id="wxBtn" title="${esc(wxState.msg||'加载中')}"><svg><use href="#i-cloud"/></svg>--°</button>`;
 }
-async function qw(path){
-  const host=S.wx.host.trim().replace(/^https?:\/\//,'').replace(/\/+$/,'');
-  const r=await fetch(`https://${host}${path}`,{headers:{'X-QW-Api-Key':S.wx.key.trim()}});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok||j.code!=='200')throw new Error(j.code==='401'||r.status===401?'API Key 无效':j.code==='404'?'找不到这个城市':`请求失败（${j.code||r.status}）`);
-  return j;
-}
+const netMsg=()=>/claude\.(ai|site)|claudeusercontent/.test(location.hostname)?'Claude 预览里无法联网，请在网页版或 Mac 客户端里使用':'网络连接失败，请稍后再试';
 async function loadWeather(force=false){
   if(NATIVE)return;
-  const cfg=S.wx||{};if(!cfg.key||!cfg.host||!cfg.city)return;
-  const c=S.wxCache;
-  if(!force&&c&&c.city===cfg.city&&Date.now()-c.at<30*6e4)return;
+  const cfg=S.wx;if(!cfg||cfg.lat==null)return;
+  const c=S.wxCache;if(!force&&c&&c.key===cfg.lat+','+cfg.lon&&Date.now()-c.at<30*6e4)return;
   wxState={status:'loading',msg:'加载中'};
   try{
-    if(!cfg.locId||cfg.locCity!==cfg.city){
-      const g=await qw(`/geo/v2/city/lookup?location=${encodeURIComponent(cfg.city)}&number=1`);
-      const l=g.location&&g.location[0];if(!l)throw new Error('找不到这个城市');
-      cfg.locId=l.id;cfg.locCity=cfg.city;cfg.locName=l.name;
-    }
-    const w=await qw(`/v7/weather/now?location=${cfg.locId}`);
-    S.wxCache={city:cfg.city,name:cfg.locName,temp:w.now.temp,text:w.now.text,at:Date.now()};
-    wxState={status:'ok',msg:''};save();
-  }catch(e){
-    wxState={status:'err',msg:e instanceof TypeError?'当前环境无法联网：Claude 页面会拦截外部请求，请下载到本地用浏览器打开':e.message};
-  }
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}&current=temperature_2m,weather_code&timezone=auto`,{cache:'no-store'});
+    if(!r.ok)throw new Error('天气服务暂时不可用（'+r.status+'）');
+    const j=await r.json();
+    S.wxCache={key:cfg.lat+','+cfg.lon,temp:j.current.temperature_2m,code:j.current.weather_code,city:cfg.city||'当前位置',at:Date.now()};
+    wxState={status:'ok',msg:''};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  }catch(e){wxState={status:'err',msg:e instanceof TypeError?netMsg():e.message}}
   if(S.view==='today')renderHead();
   const m=$('#wxMsg');if(m){m.textContent=wxState.status==='ok'?'已更新':wxState.msg;m.className='msg '+(wxState.status==='err'?'err':'')}
+}
+function setWxMsg(t,err){const m=$('#wxMsg');if(m){m.textContent=t;m.className='msg'+(err?' err':'')}}
+async function wxUseLocation(){
+  if(!navigator.geolocation)return setWxMsg('这个浏览器不支持定位，请直接输入城市',true);
+  setWxMsg('正在获取位置…');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const lat=+pos.coords.latitude.toFixed(3),lon=+pos.coords.longitude.toFixed(3);let city='';
+    try{const g=await(await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`)).json();city=g.city||g.locality||g.principalSubdivision||''}catch(e){}
+    S.wx={lat,lon,city:city||'当前位置',mode:'geo'};save();setWxMsg('正在获取天气…');await loadWeather(true);
+  },err=>setWxMsg(err.code===1?'没有定位权限，请在浏览器设置里允许，或直接输入城市':'暂时无法获取位置，请直接输入城市',true),{timeout:10000,maximumAge:30*6e4});
+}
+async function wxUseCity(){
+  const name=$('#wxCity').value.trim();if(!name)return setWxMsg('请输入城市名',true);
+  setWxMsg('正在查找城市…');
+  try{
+    const j=await(await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=zh&format=json`)).json();
+    const p=j.results&&j.results[0];if(!p)return setWxMsg('没找到这个城市，换个写法试试，比如「杭州」',true);
+    S.wx={lat:+p.latitude.toFixed(3),lon:+p.longitude.toFixed(3),city:p.name,mode:'city'};save();setWxMsg('正在获取天气…');await loadWeather(true);
+  }catch(e){setWxMsg(e instanceof TypeError?netMsg():'查找失败，请稍后再试',true)}
 }
 function toggleWxPop(){
   let p=$('#wxPop');if(p){p.remove();return}
   const cfg=S.wx||{};
   p=document.createElement('div');p.className='pop wxpop';p.id='wxPop';
-  p.innerHTML=`<h3>天气 · 和风天气</h3>
-    <p>在和风天气控制台创建项目和凭据，复制「API Host」和「API KEY」填到这里。免费额度个人使用足够。</p>
-    <label>城市<input id="wxCity" placeholder="例如 杭州" value="${esc(cfg.city||'')}"></label>
-    <label>API Host<input id="wxHost" placeholder="xxxxxx.re.qweatherapi.com" value="${esc(cfg.host||'')}"></label>
-    <label>API KEY<input id="wxKey" type="password" autocomplete="off" value="${esc(cfg.key||'')}"></label>
-    <div class="msg ${wxState.status==='err'?'err':''}" id="wxMsg">${esc(wxState.msg||'')}</div>
-    <div class="row2"><a href="https://console.qweather.com" target="_blank" rel="noopener">打开和风天气控制台</a><button class="save" id="wxSave">保存并刷新</button></div>`;
+  p.innerHTML=`<h3>天气</h3>
+    <p>使用免费的 Open-Meteo 天气服务，不需要注册或填写 Key。可以用浏览器定位，也可以直接输入城市。</p>
+    <button class="save" id="wxGeo" style="width:100%">使用当前位置</button>
+    <label>或输入城市<input id="wxCity" placeholder="例如 杭州" value="${esc(cfg.mode==='city'?cfg.city||'':'')}"></label>
+    <div class="msg ${wxState.status==='err'?'err':''}" id="wxMsg">${esc(cfg.city?'当前：'+cfg.city:'')}</div>
+    <div class="row2"><span></span><button class="save" id="wxSave">保存城市</button></div>`;
   $('.head').appendChild(p);
-  $('#wxSave').onclick=()=>{
-    S.wx=Object.assign(S.wx||{},{city:$('#wxCity').value.trim(),host:$('#wxHost').value.trim(),key:$('#wxKey').value.trim()});
-    save();$('#wxMsg').className='msg';$('#wxMsg').textContent='加载中…';loadWeather(true);
-  };
-  setTimeout(()=>$('#wxCity').focus(),30);
+  $('#wxGeo').onclick=wxUseLocation;
+  $('#wxSave').onclick=wxUseCity;
+  $('#wxCity').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)wxUseCity()});
 }
 $('#hDate').addEventListener('click',e=>{if(e.target.closest('#wxBtn')){if(NATIVE)post({type:'weather'});else toggleWxPop()}});
 document.addEventListener('mousedown',e=>{const p=$('#wxPop');if(p&&!e.target.closest('#wxPop')&&!e.target.closest('#wxBtn'))p.remove()});
