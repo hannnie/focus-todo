@@ -348,6 +348,8 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
 .syncpop a{color:var(--accent);font-size:12px}
 .themebtn:active{transform:scale(.94)}
 .themebtn svg{width:16px;height:16px}
+/* iOS 会在输入框字号小于 16px 时自动放大页面，导致聚焦后左右留白不一致；触屏设备上统一用 16px 避免缩放 */
+@media (hover:none) and (pointer:coarse){input,textarea,select,[contenteditable="true"]{font-size:16px!important}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
