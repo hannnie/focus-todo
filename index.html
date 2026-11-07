@@ -79,7 +79,7 @@ svg{flex:none}
 .tab[aria-selected="true"] .count{color:var(--muted)}
 
 /* header */
-.head{margin:6px 0 14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.head{padding-inline:12px;margin:6px 0 14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .head h1{margin:0;font-family:var(--ft),-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:var(--st);font-weight:var(--wt);font-synthesis:none;letter-spacing:.01em;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
 .head h1 svg{width:28px;height:28px}
 .head p{margin:6px 0 0;color:var(--muted);font-family:var(--fs),-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-weight:var(--ws);font-size:var(--ss);letter-spacing:.02em}
@@ -105,7 +105,7 @@ svg{flex:none}
 .wxpop .save{height:32px;padding:0 14px;border-radius:8px;background:var(--accent);color:var(--on-accent);font-weight:500}
 .wxpop a{color:var(--accent);font-size:12px}
 .head .date .wx svg{width:15px;height:15px}
-.progress{display:flex;align-items:center;gap:12px;margin:0 0 22px}
+.progress{display:flex;align-items:center;gap:12px;margin:0 0 22px;padding-inline:12px}
 .progress .bar{flex:1;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
 .progress .bar i{display:block;height:100%;width:0;background:var(--check);border-radius:inherit;transition:width .6s cubic-bezier(.2,.8,.2,1)}
 .progress span{font-family:var(--f-mono);font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;min-width:28px;text-align:right}
@@ -1248,12 +1248,16 @@ function nativeSync(){clearTimeout(nsT);nsT=setTimeout(()=>{
   const now=Date.now();
   post({type:'reminders',items:S.items.filter(i=>!i.done&&i.remind&&new Date(i.remind).getTime()>now).map(i=>({id:i.id,title:i.title,at:new Date(i.remind).getTime(),body:i.notes?firstNote(i.notes):'到时间了'}))});
   post({type:'badge',count:openCount('today')});
+  const td=visible('today'),o=td.filter(i=>!i.done).sort(byRank),d=td.filter(i=>i.done).sort((a,b)=>b.doneAt-a.doneAt);
+  post({type:'today',items:[...o,...d].map(i=>({id:i.id,title:i.title,done:!!i.done,pri:i.pri??-1}))});
 },250)}
 window.focusNative=m=>{
   const it=m.id?S.items.find(i=>i.id===m.id):null;
   switch(m.type){
     case 'complete':if(it&&!it.done){it.done=true;it.doneAt=Date.now();it.subs.forEach(x=>x.done=true);save();render()}break;
     case 'snooze':if(it){it.remind=localDT(new Date(Date.now()+(m.minutes||10)*6e4));it.reminded=false;save();render()}break;
+    case 'toggle':if(it){if(it.done){it.done=false;it.doneAt=null;moveTo(it,it.list)}else{it.done=true;it.doneAt=Date.now();it.subs.forEach(x=>x.done=true)}save();render()}break;
+    case 'addToday':{const t=(m.title||'').trim();if(t){const n=mkItem(t,'today');S.items.push(n);moveTo(n,'today');save();render()}break}
     case 'open':if(it){if(S.view!==it.list)setView(it.list);openCard(it.id)}break;
     case 'new':closeCard();window.scrollTo({top:0,behavior:'smooth'});$('#addInput').focus({preventScroll:true});break;
     case 'view':setView(m.view);break;

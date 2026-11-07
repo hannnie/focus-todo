@@ -5,6 +5,7 @@ import AppKit
 import WebKit
 import UserNotifications
 import CoreLocation
+import SwiftUI
 
 // MARK: - 本地资源：focus://app/... 从 App 包里读取网页文件
 final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -37,8 +38,132 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
 // MARK: - 标题栏拖拽区：透明标题栏下，让顶部一条区域可以拖动窗口、双击缩放
 final class DragStrip: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
-    override func mouseUp(with event: NSEvent) {
-        if event.clickCount == 2 { window?.performZoom(nil) }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            window?.performZoom(nil)
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
+}
+
+// MARK: - 菜单栏面板：列出今天的待办，快速新增
+struct TodayItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let done: Bool
+    let pri: Int
+}
+
+final class TodayModel: ObservableObject {
+    @Published var items: [TodayItem] = []
+    var onToggle: (String) -> Void = { _ in }
+    var onAdd: (String) -> Void = { _ in }
+    var onOpen: () -> Void = {}
+}
+
+struct TodayPanel: View {
+    @ObservedObject var model: TodayModel
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    private var openItems: [TodayItem] { model.items.filter { !$0.done } }
+    private var doneItems: [TodayItem] { model.items.filter { $0.done } }
+    private let sun = Color(red: 0.95, green: 0.64, blue: 0.05)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "sun.horizon.fill").foregroundColor(sun)
+                Text("今天").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Text(openItems.isEmpty ? "全部完成" : "\(openItems.count) 件待办")
+                    .font(.system(size: 12)).foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+
+            HStack(spacing: 8) {
+                Image(systemName: "plus").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+                TextField("添加到今天，回车确认", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .focused($focused)
+                    .onSubmit {
+                        let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !t.isEmpty { model.onAdd(t); draft = "" }
+                    }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+            .padding(.horizontal, 12)
+
+            Divider().padding(.top, 10)
+
+            if model.items.isEmpty {
+                Spacer()
+                Text("今天还没有待办").font(.system(size: 12)).foregroundColor(.secondary).frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(openItems) { row($0) }
+                        if !doneItems.isEmpty {
+                            HStack {
+                                Text("已完成 \(doneItems.count) 件").font(.system(size: 11)).foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+                            ForEach(doneItems) { row($0) }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+
+            Divider()
+            Button(action: model.onOpen) {
+                HStack {
+                    Text("打开 Focus Todo").font(.system(size: 12))
+                    Spacer()
+                    Text("⌘0").font(.system(size: 11)).foregroundColor(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .frame(width: 320, height: 420)
+        .onAppear { focused = true }
+    }
+
+    private func row(_ it: TodayItem) -> some View {
+        HStack(spacing: 10) {
+            Button { model.onToggle(it.id) } label: {
+                Image(systemName: it.done ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 15))
+                    .foregroundColor(it.done ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            Text(it.title)
+                .font(.system(size: 13))
+                .strikethrough(it.done)
+                .foregroundColor(it.done ? Color.secondary : Color.primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if it.pri >= 0 {
+                Text("P\(it.pri)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(priColor(it.pri))
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
+
+    private func priColor(_ p: Int) -> Color {
+        let colors: [Color] = [.red, .orange, .yellow, .blue, .gray]
+        return colors[min(max(p, 0), 4)]
     }
 }
 
@@ -53,10 +178,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     let location = CLLocationManager()
     var weatherTimer: Timer?
     var lastWeather: [String: Any] = [:]
+    var statusItem: NSStatusItem!
+    let popover = NSPopover()
+    let today = TodayModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         buildWindow()
+        setupStatusItem()
         setupNotifications()
         location.delegate = self
         location.desiredAccuracy = kCLLocationAccuracyKilometer
@@ -122,13 +251,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             strip.leadingAnchor.constraint(equalTo: glass.leadingAnchor, constant: 80),
             strip.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
             strip.topAnchor.constraint(equalTo: glass.topAnchor),
-            strip.heightAnchor.constraint(equalToConstant: 28),
+            strip.heightAnchor.constraint(equalToConstant: 40),
         ])
 
         if !window.setFrameUsingName("FocusTodoMain") { window.center() }
         window.setFrameAutosaveName("FocusTodoMain")
         window.makeKeyAndOrderFront(nil)
         web.load(URLRequest(url: URL(string: "focus://app/index.html")!))
+    }
+
+    // MARK: 菜单栏图标
+    func setupStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "sun.horizon", accessibilityDescription: "Focus Todo")
+            button.image?.isTemplate = true
+            button.target = self
+            button.action = #selector(togglePopover(_:))
+        }
+        today.onToggle = { [weak self] id in self?.send(["type": "toggle", "id": id]) }
+        today.onAdd = { [weak self] title in self?.send(["type": "addToday", "title": title]) }
+        today.onOpen = { [weak self] in
+            self?.popover.performClose(nil)
+            self?.showMain()
+        }
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentViewController = NSHostingController(rootView: TodayPanel(model: today))
+    }
+
+    @objc func togglePopover(_ sender: Any?) {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
     }
 
     // MARK: 菜单
@@ -224,6 +384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             NSApp.dockTile.badgeLabel = n > 0 ? "\(n)" : nil
         case "weather":
             refreshWeather()
+        case "today":
+            let list = body["items"] as? [[String: Any]] ?? []
+            today.items = list.compactMap { d in
+                guard let id = d["id"] as? String, let title = d["title"] as? String else { return nil }
+                return TodayItem(id: id, title: title, done: (d["done"] as? Bool) ?? false, pri: (d["pri"] as? Int) ?? -1)
+            }
         default:
             break
         }
