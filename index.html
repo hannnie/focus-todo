@@ -894,7 +894,6 @@ function toggle(id){
 function del(){
   const it=cur();if(!it)return;const idx=S.items.indexOf(it);
   S.items.splice(idx,1);closePop();openId=null;save();render();
-  toast('已删除',{label:'撤销',fn:()=>{S.items.splice(idx,0,it);save();render()}});
 }
 
 /* ---------- toast & reminders ---------- */
