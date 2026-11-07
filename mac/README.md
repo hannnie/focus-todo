@@ -1,4 +1,4 @@
-# Focus Todo · Mac 客户端
+# 照常 Loopling · Mac 客户端
 
 原生 AppKit 窗口 + WKWebView，界面与网页版共用一份代码：编译时直接打包仓库根目录的 `index.html`、`fonts/`、`icons/`。
 

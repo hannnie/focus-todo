@@ -1,4 +1,4 @@
-// Focus Todo — Mac 客户端
+// 照常 Loopling — Mac 客户端
 // 原生 AppKit 窗口 + WKWebView 承载界面；提醒走系统通知中心，天气走系统定位 + Open-Meteo，
 // Dock 角标显示今天未完成的数量。界面代码与网页版共用一份（Resources/web）。
 import AppKit
@@ -154,7 +154,7 @@ struct TodayPanel: View {
             Divider()
             Button(action: model.onOpen) {
                 HStack {
-                    Text("打开 Focus Todo").font(.system(size: 12))
+                    Text("打开照常").font(.system(size: 12))
                     Spacer()
                     Text("⌘0").font(.system(size: 11)).foregroundColor(.secondary)
                 }
@@ -253,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
-        window.title = "Focus Todo"
+        window.title = "照常"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
@@ -292,8 +292,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "sun.horizon", accessibilityDescription: "Focus Todo")
-            button.image?.isTemplate = true
+            // 菜单栏用「日环」的单色剪影，跟随系统深浅色
+            let icon = NSImage(named: "MenuBarIcon") ?? NSImage(systemSymbolName: "sun.horizon", accessibilityDescription: "照常")
+            icon?.size = NSSize(width: 18, height: 18)
+            icon?.isTemplate = true
+            button.image = icon
+            button.toolTip = "照常"
             button.target = self
             button.action = #selector(togglePopover(_:))
         }
@@ -328,15 +332,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         let main = NSMenu()
 
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "关于 Focus Todo", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "关于照常", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "隐藏 Focus Todo", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "隐藏照常", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let others = appMenu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         others.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出 Focus Todo", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        addSubmenu(main, title: "Focus Todo", menu: appMenu)
+        appMenu.addItem(withTitle: "退出照常", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        addSubmenu(main, title: "照常", menu: appMenu)
 
         let file = NSMenu(title: "文件")
         file.addItem(item("新建待办", #selector(newTodo), "n"))

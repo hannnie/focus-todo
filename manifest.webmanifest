@@ -1,7 +1,7 @@
 {
-  "name": "Focus Todo",
-  "short_name": "Focus",
-  "description": "今天、本周、计划：专注今日最重要的事",
+  "name": "照常 Loopling",
+  "short_name": "照常",
+  "description": "照常 Loopling：今天、本周、计划，专注今日最重要的事",
   "lang": "zh-CN",
   "start_url": "/",
   "display": "standalone",

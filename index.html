@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Focus Todo</title>
-<meta name="description" content="今天、本周、计划：专注今日最重要的事">
+<title>照常</title>
+<meta name="description" content="照常 Loopling：今天、本周、计划，专注今日最重要的事">
 <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Focus">
+<meta name="apple-mobile-web-app-title" content="照常">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/icons/favicon.png">
@@ -1183,7 +1183,7 @@ async function syncNow(){
   try{
     let remoteTxt='';
     if(!SC.gist){
-      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'Focus Todo 同步数据（请勿手动修改）',public:false,files:{[GIST_FILE]:{content:payload()}}})});
+      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'照常 Loopling 同步数据（请勿手动修改）',public:false,files:{[GIST_FILE]:{content:payload()}}})});
       SC.gist=g.id;saveSC();remoteTxt=payload();
     }else{
       const g=await gh('/gists/'+SC.gist);const f=g.files&&g.files[GIST_FILE];
@@ -1266,7 +1266,7 @@ window.focusNative=m=>{
     case 'theme':setTheme(isDark()?'light':'dark');break;
     case 'sync':syncNow();break;
     case 'weather':NW=m;if(S.view==='today')renderHead();break;
-    case 'notifyAuth':if(!m.ok)toast('系统通知未开启，可在「系统设置 → 通知 → Focus Todo」里打开');break;
+    case 'notifyAuth':if(!m.ok)toast('系统通知未开启，可在「系统设置 → 通知 → 照常」里打开');break;
   }
 };
 
