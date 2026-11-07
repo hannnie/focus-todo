@@ -63,6 +63,36 @@ final class TodayModel: ObservableObject {
     var onOpen: () -> Void = {}
 }
 
+func dynamicColor(light: NSColor, dark: NSColor) -> Color {
+    Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+    })
+}
+let checkBlue = dynamicColor(light: NSColor(red: 0.184, green: 0.400, blue: 0.831, alpha: 1),
+                             dark: NSColor(red: 0.357, green: 0.549, blue: 0.949, alpha: 1))
+let checkLine = dynamicColor(light: NSColor(red: 0.765, green: 0.780, blue: 0.816, alpha: 1),
+                             dark: NSColor(red: 0.290, green: 0.314, blue: 0.361, alpha: 1))
+
+struct FocusCheck: View {
+    var on: Bool = false
+    var dashed: Bool = false
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(on ? checkBlue : Color.clear)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(on ? Color.clear : checkLine,
+                              style: StrokeStyle(lineWidth: 1.2, dash: dashed ? [2.5, 2] : []))
+            if on {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        }
+        .frame(width: 16, height: 16)
+    }
+}
+
 struct TodayPanel: View {
     @ObservedObject var model: TodayModel
     @State private var draft = ""
@@ -81,10 +111,10 @@ struct TodayPanel: View {
                 Text(openItems.isEmpty ? "全部完成" : "\(openItems.count) 件待办")
                     .font(.system(size: 12)).foregroundColor(.secondary)
             }
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+            .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 10)
 
-            HStack(spacing: 8) {
-                Image(systemName: "plus").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+            HStack(spacing: 10) {
+                FocusCheck(dashed: true)
                 TextField("添加到今天，回车确认", text: $draft)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
@@ -113,7 +143,7 @@ struct TodayPanel: View {
                                 Text("已完成 \(doneItems.count) 件").font(.system(size: 11)).foregroundColor(.secondary)
                                 Spacer()
                             }
-                            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+                            .padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 4)
                             ForEach(doneItems) { row($0) }
                         }
                     }
@@ -131,7 +161,7 @@ struct TodayPanel: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 16).padding(.vertical, 10)
+            .padding(.horizontal, 22).padding(.vertical, 10)
         }
         .frame(width: 320, height: 420)
         .onAppear { focused = true }
@@ -140,9 +170,7 @@ struct TodayPanel: View {
     private func row(_ it: TodayItem) -> some View {
         HStack(spacing: 10) {
             Button { model.onToggle(it.id) } label: {
-                Image(systemName: it.done ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 15))
-                    .foregroundColor(it.done ? Color.accentColor : Color.secondary)
+                FocusCheck(on: it.done)
             }
             .buttonStyle(.plain)
             Text(it.title)
@@ -157,7 +185,7 @@ struct TodayPanel: View {
                     .foregroundColor(priColor(it.pri))
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 6)
+        .padding(.horizontal, 22).padding(.vertical, 6)
         .contentShape(Rectangle())
     }
 
@@ -277,7 +305,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         }
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: TodayPanel(model: today))
+        let host = NSHostingController(rootView: TodayPanel(model: today))
+        if #available(macOS 13.0, *) { host.sizingOptions = [] }
+        host.view.frame = NSRect(x: 0, y: 0, width: 320, height: 420)
+        popover.contentViewController = host
+        popover.contentSize = NSSize(width: 320, height: 420)
     }
 
     @objc func togglePopover(_ sender: Any?) {
