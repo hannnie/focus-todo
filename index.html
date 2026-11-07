@@ -1218,8 +1218,9 @@ document.addEventListener('visibilitychange',pullSoon);
 addEventListener('focus',pullSoon);
 addEventListener('pageshow',e=>{if(e.persisted)pullSoon()});
 addEventListener('online',()=>syncNow());
-// 页面开着时每 20 秒拉一次
-setInterval(()=>{if(document.visibilityState==='visible')syncNow()},20000);
+// 页面开着时每 5 秒拉一次；出错时放慢到 30 秒一次，避免触发 GitHub 的频率限制
+let lastTick=0;
+setInterval(()=>{if(document.visibilityState!=='visible')return;if(syncState.s==='err'&&Date.now()-lastTick<30000)return;lastTick=Date.now();syncNow()},5000);
 
 /* ---------- boot ---------- */
 load();resetSnap();rollover();syncDates();render();setSync(SC.token?'idle':'off');syncNow();checkReminders();loadWeather();
