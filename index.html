@@ -1149,7 +1149,7 @@ function mergeRemote(r){
 }
 const payload=()=>JSON.stringify({v:1,items:S.items,del:S.del||{}});
 async function gh(path,opt={}){
-  const r=await fetch('https://api.github.com'+path,{...opt,headers:{'Accept':'application/vnd.github+json','Authorization':'Bearer '+SC.token,'X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{})}});
+  const r=await fetch('https://api.github.com'+path,{cache:'no-store',...opt,headers:{'Accept':'application/vnd.github+json','Authorization':'Bearer '+SC.token,'X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{})}});
   if(r.status===401)throw new Error('Token 无效或已过期');
   if(r.status===403||r.status===404)throw new Error(r.status===404?'找不到同步文件，或 Token 没有 Gist 权限':'没有权限，请确认 Token 勾选了 Gist 读写');
   if(!r.ok)throw new Error('GitHub 请求失败（'+r.status+'）');
@@ -1166,7 +1166,7 @@ async function syncNow(){
       SC.gist=g.id;saveSC();remoteTxt=payload();
     }else{
       const g=await gh('/gists/'+SC.gist);const f=g.files&&g.files[GIST_FILE];
-      if(f){remoteTxt=f.truncated?await(await fetch(f.raw_url)).text():f.content;
+      if(f){remoteTxt=f.truncated?await(await fetch(f.raw_url,{cache:'no-store'})).text():f.content;
         let r={};try{r=JSON.parse(remoteTxt)}catch(e){}
         if(mergeRemote(r)){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}rollover();syncDates();if(openId){renderTabs();renderHead()}else render()}}
     }
@@ -1212,8 +1212,14 @@ async function findGist(){
   const g=list.find(x=>x.files&&x.files[GIST_FILE]);return g?g.id:'';
 }
 document.addEventListener('mousedown',e=>{const p=$('#syncPop');if(p&&!e.target.closest('#syncPop')&&!e.target.closest('#syncBtn'))p.remove()});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncNow()});
-setInterval(()=>{if(document.visibilityState==='visible')syncNow()},60000);
+// 回到页面就同步：切回标签页、窗口重新获得焦点、手机从后台切回（含 Safari 的页面缓存恢复）
+let lastPull=0;const pullSoon=()=>{if(document.visibilityState!=='visible'||Date.now()-lastPull<2000)return;lastPull=Date.now();syncNow()};
+document.addEventListener('visibilitychange',pullSoon);
+addEventListener('focus',pullSoon);
+addEventListener('pageshow',e=>{if(e.persisted)pullSoon()});
+addEventListener('online',()=>syncNow());
+// 页面开着时每 20 秒拉一次
+setInterval(()=>{if(document.visibilityState==='visible')syncNow()},20000);
 
 /* ---------- boot ---------- */
 load();resetSnap();rollover();syncDates();render();setSync(SC.token?'idle':'off');syncNow();checkReminders();loadWeather();
