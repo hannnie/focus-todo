@@ -9,7 +9,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="照常">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -320,6 +319,8 @@ body.drag-on .row:not(.dragging):hover{background:transparent}
 .dock-add:active{transform:scale(.96)}
 .dock-add svg{width:18px;height:18px;position:relative;z-index:1}
 @media (max-width:420px){.dock .tab{padding:0 12px}.dock .tab .count{display:none}}
+/* iOS 主屏模式下状态栏取页面最顶层的背景色，html 也要有底色，否则会出现灰条 */
+:root:not(.mac){background:var(--bg)}
 .mac .app{padding-top:48px}
 .mac .themebtn{top:61px}
 .mac body{background:color-mix(in srgb,var(--bg) 88%,transparent)}
@@ -1170,30 +1171,46 @@ function mergeRemote(r){
   S.items=[...byId.values()];S.del=del;resetSnap();return changed;
 }
 const payload=()=>JSON.stringify({v:1,items:S.items,del:S.del||{}});
-async function gh(path,opt={}){
-  const r=await fetch('https://api.github.com'+path,{cache:'no-store',...opt,headers:{'Accept':'application/vnd.github+json','Authorization':'Bearer '+SC.token,'X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{})}});
-  if(r.status===401)throw new Error('Token 无效或已过期');
-  if(r.status===403||r.status===404)throw new Error(r.status===404?'找不到同步文件，或 Token 没有 Gist 权限':'没有权限，请确认 Token 勾选了 Gist 读写');
-  if(!r.ok)throw new Error('GitHub 请求失败（'+r.status+'）');
-  return r.json();
+// 请求 GitHub：返回原始 Response，错误时给出能定位问题的说明（带上 GitHub 返回的原因）
+async function ghRaw(path,opt={}){
+  const r=await fetch('https://api.github.com'+path,{cache:'no-store',...opt,headers:{'Accept':'application/vnd.github+json','Authorization':'Bearer '+SC.token,'X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{}),...(opt.headers||{})}});
+  if(r.ok||r.status===304)return r;
+  let why='';try{why=(await r.json()).message||''}catch(e){}
+  const limited=r.status===429||r.headers.get('x-ratelimit-remaining')==='0'||/rate limit/i.test(why);
+  const err=new Error(limited?'GitHub 暂时限流，稍后会自动恢复'
+    :r.status===401?'Token 无效或已过期，请重新填写'
+    :r.status===404?'找不到同步数据'
+    :r.status===403?'没有权限（GitHub：'+(why||'Forbidden')+'）。请确认 Token 的 Gists 权限为 Read and write'
+    :'GitHub 请求失败（'+r.status+(why?'：'+why:'')+'）');
+  err.status=r.status;err.limited=limited;throw err;
 }
+const gh=async(path,opt)=>(await ghRaw(path,opt)).json();
+let remoteCache=null; // 上次从 GitHub 拿到的内容，配合 ETag：内容没变时 GitHub 返回 304，不消耗请求额度
 async function syncNow(){
   if(!SC.token)return;
   if(syncing){syncAgain=true;return}
-  syncing=true;setSync('busy');
+  syncing=true;if(syncState.s!=='ok')setSync('busy');
   try{
     let remoteTxt='';
+    if(!SC.gist)SC.gist=await findGist();
     if(!SC.gist){
       const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'照常 Loopling 同步数据（请勿手动修改）',public:false,files:{[GIST_FILE]:{content:payload()}}})});
-      SC.gist=g.id;saveSC();remoteTxt=payload();
+      SC.gist=g.id;SC.etag='';saveSC();remoteTxt=remoteCache=payload();
     }else{
-      const g=await gh('/gists/'+SC.gist);const f=g.files&&g.files[GIST_FILE];
-      if(f){remoteTxt=f.truncated?await(await fetch(f.raw_url,{cache:'no-store'})).text():f.content;
-        let r={};try{r=JSON.parse(remoteTxt)}catch(e){}
-        if(mergeRemote(r)){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}rollover();syncDates();if(openId){renderTabs();renderHead()}else render()}}
+      let r;
+      try{r=await ghRaw('/gists/'+SC.gist,{headers:SC.etag&&remoteCache!=null?{'If-None-Match':SC.etag}:{}})}
+      catch(e){if(e.status===404){SC.gist='';SC.etag='';saveSC();throw new Error('同步数据不见了，下次同步会自动重新创建')}throw e}
+      if(r.status===304){remoteTxt=remoteCache}
+      else{
+        const g=await r.json(),f=g.files&&g.files[GIST_FILE];
+        remoteTxt=f?(f.truncated?await(await fetch(f.raw_url,{cache:'no-store'})).text():f.content):'';
+        SC.etag=r.headers.get('ETag')||'';remoteCache=remoteTxt;saveSC();
+        let rd={};try{rd=JSON.parse(remoteTxt||'{}')}catch(e){}
+        if(mergeRemote(rd)){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}rollover();syncDates();if(openId){renderTabs();renderHead()}else render()}
+      }
     }
     const mine=payload();
-    if(mine!==remoteTxt)await gh('/gists/'+SC.gist,{method:'PATCH',body:JSON.stringify({files:{[GIST_FILE]:{content:mine}}})});
+    if(mine!==remoteTxt){await gh('/gists/'+SC.gist,{method:'PATCH',body:JSON.stringify({files:{[GIST_FILE]:{content:mine}}})});SC.etag='';remoteCache=mine;saveSC()}
     SC.last=Date.now();saveSC();setSync('ok');
   }catch(e){setSync('err',e instanceof TypeError?'网络连接失败，稍后会自动重试':e.message)}
   syncing=false;if(syncAgain){syncAgain=false;syncNow()}
